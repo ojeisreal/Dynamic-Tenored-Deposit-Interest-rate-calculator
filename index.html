@@ -1,0 +1,572 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dynamic Tenored Deposit Interest rate calculator</title>
+  <style>
+    :root{ --bg:#0f172a; --fg:#e2e8f0; --card:#111827; --muted:#94a3b8; --brand:#10b981; --danger:#ef4444; }
+    *{ box-sizing:border-box; }
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Noto Sans',sans-serif; background:var(--bg); color:var(--fg); }
+    a{ color:#93c5fd; }
+    .container{ max-width:1200px; margin:2rem auto; padding:0 1rem; }
+    header h1{ margin:.2rem 0 .5rem; font-size:1.8rem; }
+    header p{ margin:0 0 1rem; color:var(--muted); }
+
+    .grid-main{ display:grid; grid-template-columns: 1.1fr .9fr; gap:1rem; align-items:start; }
+    @media (max-width: 980px){ .grid-main{ grid-template-columns: 1fr; } }
+
+    .card{ background:linear-gradient(180deg,#0b1220,#0b1220) padding-box, linear-gradient(145deg,#1f2937,#0ea5e9) border-box; border:1px solid transparent; border-radius:12px; padding:1rem; box-shadow:0 10px 30px rgba(0,0,0,.35); }
+    .section-title{ margin:.25rem 0 .75rem; font-size:1.1rem; }
+
+    .field{ margin:.75rem 0; display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+    .field label{ width:190px; font-weight:600; }
+    .field .controls{ flex:1 1 260px; display:flex; gap:.5rem; flex-wrap:wrap; }
+    input[type="text"], input[type="number"], select, input[type="file"]{ background:#0b1220; border:1px solid #1f2937; color:var(--fg); border-radius:8px; padding:.6rem .75rem; font-size:1rem; }
+    input[type="file"]{ padding:.4rem; }
+    small.help{ display:block; color:var(--muted); margin-top:.25rem; }
+
+    .actions{ display:flex; gap:.5rem; flex-wrap:wrap; }
+    button{ background:var(--brand); color:#032016; border:none; border-radius:8px; padding:.6rem 1rem; font-weight:700; cursor:pointer; }
+    button.secondary{ background:transparent; border:1px solid #1f2937; color:var(--fg); }
+    button.ghost{ background:transparent; color:var(--fg); text-decoration:underline; }
+    button.danger{ background:var(--danger); color:#fff; }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+
+    .two-col{ display:grid; grid-template-columns: 1fr 1fr; gap:1rem; }
+    @media (max-width: 720px){ .two-col{ grid-template-columns: 1fr; } }
+
+    .muted{ color:var(--muted); }
+    .hidden{ display:none !important; }
+    .error{ color:#fecaca; background:#7f1d1d; border:1px solid #dc2626; padding:.5rem .75rem; border-radius:8px; }
+
+    /* Results full-span */
+    .full-span{ grid-column:1 / -1; }
+
+    /* Results grid (2 columns) */
+    #result .grid{ display:grid; grid-template-columns: repeat(2, minmax(240px, 1fr)); gap:1rem; }
+    @media (max-width: 640px){ #result .grid{ grid-template-columns: 1fr; } }
+    #result .grid > div{ background:#0b1220; border:1px solid #1f2937; border-radius:10px; padding:.75rem; }
+    #result .grid .k{ color:var(--muted); font-size:.85rem; display:block; margin-bottom:.25rem; }
+    #result .grid .v{ font-weight:800; font-size:1.05rem; }
+    #result .grid .v.big{ font-size:1.35rem; }
+    #result .grid .emphasis{ border-color:#10b981; box-shadow:0 0 0 2px rgba(16,185,129,.25) inset; }
+    #result .grid .emphasis .k{ color:#d1fae5; }
+
+    /* Rate table */
+    #rate-table table{ width:100%; border-collapse:collapse; margin-top:.5rem; }
+    #rate-table th,#rate-table td{ border:1px solid #1f2937; padding:.5rem; text-align:right; }
+    #rate-table th:first-child,#rate-table td:first-child{ text-align:left; }
+    #rate-table th{ background:#0b1220; }
+    #rate-table td.active{ background:#064e3b; color:#d1fae5; font-weight:800; position:relative; }
+    #rate-table td.active::after{ content:''; position:absolute; inset:0; outline:2px solid #10b981; border-radius:2px; pointer-events:none; }
+
+    .preview{ overflow:auto; max-height:320px; border:1px dashed #334155; border-radius:8px; padding:.5rem; }
+    .preview table{ width:100%; border-collapse:collapse; }
+    .preview th,.preview td{ border:1px solid #1f2937; padding:.35rem .5rem; font-size:.92rem; }
+    .chip{ display:inline-flex; align-items:center; gap:.35rem; background:#0b1220; border:1px solid #1f2937; border-radius:999px; padding:.2rem .6rem; font-size:.85rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Dynamic Tenored Deposit Interest rate calculator</h1>
+      <p class="muted">Upload a <strong>rate guide</strong> (CSV/XLSX). The app builds the calculator automatically, lets you define amount bands, and computes interest (with WHT) using your data — all client‑side.</p>
+    </header>
+
+    <div class="grid-main">
+      <!-- LEFT: Upload + Calculator + Results -->
+      <section>
+        <div class="card" id="uploader-card">
+          <h2 class="section-title">1) Upload rate guide</h2>
+          <div class="field">
+            <label for="file">Rate guide file</label>
+            <div class="controls">
+              <input id="file" type="file" accept=".csv,.xlsx,.xls,.json" />
+              <button id="btnLoad" class="secondary" onclick="loadRateGuide()">Load</button>
+              <button id="btnResetAll" class="danger" onclick="resetAll()">Reset All</button>
+            </div>
+          </div>
+          <small class="help">CSV format: first column <em>Tenor</em> (days), subsequent columns are <em>amount tiers</em> (e.g., ">1MM", ">10MM", "Above 1bn"). Rates can be <em>decimals</em> (0.17) or <em>percent values</em> (17). The app auto‑detects & normalizes. XLSX requires enabling the parser in Tools.</small>
+          <div id="loadError" class="error hidden"></div>
+
+          <div id="afterLoad" class="hidden" style="margin-top:1rem;">
+            <div class="two-col">
+              <div>
+                <h3 class="section-title">Detected structure</h3>
+                <div class="field"><label>Tenors</label><div class="controls" id="detTenors"></div></div>
+                <div class="field"><label>Amount tiers</label><div class="controls" id="detTiers"></div></div>
+                <div class="preview" id="preview"></div>
+              </div>
+              <div>
+                <h3 class="section-title">2) Define amount bands</h3>
+                <small class="help">We infer bands from labels like ">10MM" or "Above 1bn". Review and adjust if needed.</small>
+                <div id="bandBuilder"></div>
+                <div class="actions" style="margin-top:.5rem;">
+                  <button class="secondary" onclick="inferBands()">Infer from labels</button>
+                  <button onclick="applyBands()">Apply bands</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card hidden" id="calc-card">
+          <h2 class="section-title">3) Calculator</h2>
+          <div class="field">
+            <label>Display currency</label>
+            <div class="controls">
+              <input id="currencySymbol" type="text" value="₦" style="width:80px" />
+              <select id="locale">
+                <option value="en-NG" selected>en-NG</option>
+                <option value="en-GB">en-GB</option>
+                <option value="en-US">en-US</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>Day count</label>
+            <div class="controls">
+              <select id="dayCount">
+                <option value="365" selected>Actual/365</option>
+                <option value="360">Actual/360</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label>WHT (%)</label>
+            <div class="controls">
+              <input id="whtPct" type="number" step="0.01" value="10" style="width:120px" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="amount">Amount</label>
+            <div class="controls">
+              <input id="amount" type="text" inputmode="numeric" placeholder="1,000,000" autocomplete="off" />
+              <select id="tenor"></select>
+              <div class="actions">
+                <button id="btnCalc" onclick="calculate()" disabled>Calculate</button>
+                <button class="secondary" onclick="resetForm()">Reset</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <section id="result" class="card hidden full-span">
+          <h2>Result</h2>
+          <div class="grid">
+            <div><span class="k">Matched Tier</span><span id="out-tier" class="v"></span></div>
+            <div><span class="k">Rate (per annum)</span><span id="out-rate" class="v"></span></div>
+            <div><span class="k">Tenor</span><span id="out-tenor" class="v"></span></div>
+            <div><span class="k">Principal</span><span id="out-principal" class="v"></span></div>
+            <div><span class="k">Gross interest</span><span id="out-interest" class="v"></span></div>
+            <div><span class="k">WHT</span><span id="out-wht" class="v"></span></div>
+            <div><span class="k">Net interest</span><span id="out-net-interest" class="v"></span></div>
+            <div class="result-item emphasis"><span class="k">Net maturity value</span><span id="out-net-total" class="v big"></span></div>
+          </div>
+        </section>
+
+        <footer class="muted" style="margin-top:.5rem;">
+          <small>Simple interest: Interest = Principal × Rate × (Tenor/DayCount). Rates are per annum. WHT applied on interest.</small>
+        </footer>
+      </section>
+
+      <!-- RIGHT: Rate table + tools -->
+      <aside>
+        <div class="card">
+          <h2 class="section-title">Interest Rate Table</h2>
+          <div id="rate-table"></div>
+          <small class="muted">Highlighted cell shows the rate used for the current calculation.</small>
+        </div>
+        <div class="card" style="margin-top:1rem;">
+          <h2 class="section-title">Tools</h2>
+          <div class="actions">
+            <button class="secondary" onclick="exportConfig()">Export config (JSON)</button>
+            <button class="secondary" onclick="saveLocal()">Save locally</button>
+            <button class="ghost" onclick="loadLocal()">Load locally</button>
+            <button class="danger" onclick="clearLocal()">Clear local</button>
+          </div>
+          <small class="help">Local save uses your browser's storage (no server).</small>
+          <details style="margin-top:.5rem;">
+            <summary>Enable XLSX parsing (requires internet)</summary>
+            <small class="help">Click to load the open‑source <em>SheetJS</em> parser from a CDN for .xlsx/.xls support. Otherwise, upload CSV.</small>
+            <div class="actions" style="margin-top:.5rem;">
+              <button class="secondary" onclick="loadXLSX()">Load XLSX parser</button>
+              <span id="xlsxStatus" class="chip">Status: <strong id="xlsxReady">Not loaded</strong></span>
+            </div>
+          </details>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script>
+    // App state
+    let ratesData = null; // { tenor:number: { tierLabel:string: rate:number } }
+    let tierLabels = [];  // [label]
+    let tenors = [];      // [number]
+    let bands = [];       // [{label, min, max}]
+    let highlightedCell = null;
+    let rateScale = 'decimal'; // 'decimal' (0.17) or 'percent' (17)
+
+    const el = (id)=>document.getElementById(id);
+
+    function showError(msg){ const e=el('loadError'); e.textContent=msg; e.classList.remove('hidden'); }
+    function hideError(){ const e=el('loadError'); e.classList.add('hidden'); e.textContent=''; }
+
+    function loadXLSX(){
+      if(window.XLSX){ el('xlsxReady').textContent='Loaded'; return; }
+      const s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload=()=>{ el('xlsxReady').textContent='Loaded'; };
+      s.onerror=()=>{ el('xlsxReady').textContent='Failed'; };
+      document.head.appendChild(s);
+    }
+
+    function loadRateGuide(){
+      hideError();
+      const f = el('file').files[0];
+      if(!f){ showError('Please choose a rate guide file (.csv, .xlsx, .xls, or JSON exported by this app).'); return; }
+      const name = f.name.toLowerCase();
+      if(name.endsWith('.json')){ readJSON(f); return; }
+      if(name.endsWith('.csv')){ readCSV(f); return; }
+      if((name.endsWith('.xlsx') || name.endsWith('.xls'))){
+        if(!window.XLSX){ showError('XLSX parsing requires the parser (see Tools → Enable XLSX parsing) or upload CSV.'); return; }
+        readXLSX(f); return;
+      }
+      showError('Unsupported file format. Please upload CSV, XLSX/XLS (with parser), or JSON.');
+    }
+
+    function readJSON(file){
+      const fr=new FileReader();
+      fr.onload=()=>{
+        try{
+          const obj = JSON.parse(fr.result);
+          if(!obj || !obj.rates || !obj.tiers || !obj.tenors){ throw new Error('Invalid JSON config.'); }
+          ratesData = obj.rates; tierLabels = obj.tiers; tenors = obj.tenors.map(n=>parseInt(n,10));
+          bands = obj.bands || buildDefaultBandsFromLabels(tierLabels);
+          detectRateScale();
+          onDataReady(obj.preview || null);
+        }catch(err){ showError('JSON error: '+err.message); }
+      };
+      fr.readAsText(file);
+    }
+
+    function readCSV(file){
+      const fr=new FileReader();
+      fr.onload=()=>{
+        try{
+          const rows = parseCSV(fr.result).filter(r=>r.some(c=>String(c).trim()!==''));
+          if(rows.length<2) throw new Error('CSV has no data.');
+          // Find header row
+          let headerIdx = 0;
+          for(let i=0;i<Math.min(5,rows.length);i++){
+            const cell = String(rows[i][0]||'').trim();
+            if(cell.toLowerCase()==='tenor' || !isNaN(parseFloat(cell))){ headerIdx=i; break; }
+          }
+          const header = rows[headerIdx].map(x=>String(x).trim());
+          if(header.length<2) throw new Error('Expecting Tenor and at least one tier column.');
+          const dataRows = rows.slice(headerIdx+1);
+          const tiers = header.slice(1);
+          const map = {}; const tenSet = new Set();
+          dataRows.forEach(r=>{
+            const t = parseInt(String(r[0]||'').replace(/[^\d]/g,''),10);
+            if(!isFinite(t)) return; tenSet.add(t);
+            const rowObj={};
+            tiers.forEach((lab, j)=>{
+              const raw = String(r[1+j]??'').trim().replace('%','');
+              const num = parseFloat(raw);
+              rowObj[lab] = isFinite(num)? num : null;
+            });
+            map[t]=rowObj;
+          });
+          ratesData = map; tenors = Array.from(tenSet).sort((a,b)=>a-b); tierLabels = tiers;
+          bands = buildDefaultBandsFromLabels(tierLabels);
+          detectRateScale();
+          onDataReady({header, rows:dataRows});
+        }catch(err){ showError('CSV error: '+err.message); }
+      };
+      fr.readAsText(file);
+    }
+
+    function readXLSX(file){
+      const fr=new FileReader();
+      fr.onload=()=>{
+        try{
+          const wb = XLSX.read(new Uint8Array(fr.result), {type:'array'});
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:true});
+          if(!rows || rows.length<2) throw new Error('Sheet has no data.');
+          let headerIdx = 0;
+          for(let i=0;i<Math.min(5,rows.length);i++){
+            const cell = String(rows[i][0]||'').trim();
+            if(cell.toLowerCase()==='tenor' || !isNaN(parseFloat(cell))){ headerIdx=i; break; }
+          }
+          const header = rows[headerIdx].map(x=>String(x).trim());
+          const dataRows = rows.slice(headerIdx+1);
+          const tiers = header.slice(1);
+          const map = {}; const tenSet = new Set();
+          dataRows.forEach(r=>{
+            const t = parseInt(String(r[0]||'').toString().replace(/[^\d]/g,''),10);
+            if(!isFinite(t)) return; tenSet.add(t);
+            const rowObj={};
+            tiers.forEach((lab, j)=>{
+              const raw = String(r[1+j]??'').trim().replace('%','');
+              const num = parseFloat(raw);
+              rowObj[lab] = isFinite(num)? num : null;
+            });
+            map[t]=rowObj;
+          });
+          ratesData = map; tenors = Array.from(tenSet).sort((a,b)=>a-b); tierLabels = tiers;
+          bands = buildDefaultBandsFromLabels(tierLabels);
+          detectRateScale();
+          onDataReady({header, rows:dataRows});
+        }catch(err){ showError('XLSX error: '+err.message); }
+      };
+      fr.readAsArrayBuffer(file);
+    }
+
+    function detectRateScale(){
+      let samples=[];
+      for(const t of Object.keys(ratesData||{})){
+        for(const l of (tierLabels||[])){
+          const v=(ratesData[t]||{})[l];
+          if(typeof v==='number' && isFinite(v)) samples.push(v);
+          if(samples.length>=12) break;
+        }
+        if(samples.length>=12) break;
+      }
+      if(samples.length===0){ rateScale='decimal'; return; }
+      const max = Math.max(...samples);
+      rateScale = (max>1.5) ? 'percent' : 'decimal';
+    }
+
+    function onDataReady(preview){
+      el('detTenors').innerHTML = tenors.map(t=>`<span class="chip">${t} days</span>`).join(' ');
+      el('detTiers').innerHTML  = tierLabels.map(s=>`<span class="chip">${escapeHtml(s)}</span>`).join(' ');
+      renderPreview(preview);
+      renderBandBuilder();
+      const tenorSel = el('tenor');
+      tenorSel.innerHTML = tenors.map(t=>`<option value="${t}">${t} days</option>`).join('');
+      el('afterLoad').classList.remove('hidden');
+      el('calc-card').classList.remove('hidden');
+      el('btnCalc').disabled = false;
+      renderRateTable();
+      sessionStorage.setItem('ratesData', JSON.stringify({rates:ratesData, tiers:tierLabels, tenors:tenors, bands:bands}));
+      clearResults();
+    }
+
+    function renderPreview(pre){
+      // Always show percentages for tier columns
+      const pctFmt = (v)=> (v===null||v===undefined||v==='') ? '' : ((rateScale==='percent') ? `${Number(v).toFixed(2)}%` : `${(Number(v)*100).toFixed(2)}%`);
+      let html='';
+      if(pre && pre.header){
+        const header = pre.header;
+        html += '<table><thead><tr>' + header.map(h=>`<th>${escapeHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
+        pre.rows.slice(0,30).forEach(r=>{
+          const cells = r.map((c, idx)=>{
+            if(idx===0) return `<td>${escapeHtml(String(c??''))}</td>`; // Tenor as-is
+            const raw = String(c??'').trim().replace('%','');
+            const num = parseFloat(raw);
+            return `<td>${isFinite(num)? pctFmt(num) : escapeHtml(String(c??''))}</td>`;
+          });
+          html += '<tr>'+ cells.join('') + '</tr>';
+        });
+        if(pre.rows.length>30) html+='<tr><td colspan="99" class="muted">…</td></tr>';
+        html += '</tbody></table>';
+      } else if (ratesData) {
+        const headers = ['Tenor', ...tierLabels];
+        html += '<table><thead><tr>' + headers.map(h=>`<th>${escapeHtml(h)}</th>`).join('') + '</tr></thead><tbody>';
+        tenors.forEach(t=>{
+          let row = `<tr><td>${t}</td>`;
+          tierLabels.forEach(l=>{ const v=(ratesData[t]||{})[l]; row += `<td>${(typeof v==='number')? pctFmt(v):'—'}</td>`; });
+          row+='</tr>'; html+=row;
+        });
+        html += '</tbody></table>';
+      }
+      el('preview').innerHTML = html;
+    }
+
+    function renderBandBuilder(){
+      const rows = bands.length? bands: tierLabels.map(l=>({label:l, min:'', max:''}));
+      const tbl = ['<table><thead><tr><th style="text-align:left;">Tier label</th><th>Min (inclusive)</th><th>Max (inclusive or blank)</th></tr></thead><tbody>'];
+      rows.forEach((b,i)=>{
+        tbl.push(`<tr>
+          <td><input type="text" value="${escapeAttr(b.label)}" data-bidx="${i}" data-k="label" /></td>
+          <td><input type="number" value="${b.min??''}" data-bidx="${i}" data-k="min" /></td>
+          <td><input type="number" value="${b.max??''}" data-bidx="${i}" data-k="max" /></td>
+        </tr>`);
+      });
+      tbl.push('</tbody></table>');
+      el('bandBuilder').innerHTML = tbl.join('');
+      el('bandBuilder').querySelectorAll('input').forEach(inp=>{
+        inp.addEventListener('input', ()=>{
+          const idx = parseInt(inp.dataset.bidx,10); const k = inp.dataset.k;
+          if(!bands[idx]) bands[idx] = {label:'', min:null, max:null};
+          let val = inp.value; if(k!=='label'){ val = (val==='')? null : Number(val); }
+          bands[idx][k] = val;
+        });
+      });
+    }
+
+    function inferBands(){ bands = buildDefaultBandsFromLabels(tierLabels); renderBandBuilder(); }
+    function applyBands(){
+      const ok = bands.every(b=> b && b.label && (b.min!=null || b.max!=null));
+      if(!ok){ alert('Please enter at least a min or a max for every tier.'); return; }
+      sessionStorage.setItem('ratesData', JSON.stringify({rates:ratesData, tiers:tierLabels, tenors:tenors, bands:bands}));
+      renderRateTable();
+      alert('Bands applied. PLEASE RECACULATE.');
+    }
+
+    function renderRateTable(){
+      const container = el('rate-table');
+      if(!ratesData){ container.innerHTML = '<div class="muted">Upload a rate guide to see the table.</div>'; return; }
+      const tbl = document.createElement('table');
+      const thead = document.createElement('thead');
+      const hrow = document.createElement('tr');
+      const th0 = document.createElement('th'); th0.textContent = 'Tenor (days)'; hrow.appendChild(th0);
+      tierLabels.forEach(l=>{ const th=document.createElement('th'); th.textContent=l; hrow.appendChild(th); });
+      thead.appendChild(hrow); tbl.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      tenors.forEach(t=>{
+        const row=document.createElement('tr');
+        const td0=document.createElement('td'); td0.textContent=String(t); row.appendChild(td0);
+        tierLabels.forEach(l=>{
+          const td=document.createElement('td');
+          const v = (ratesData[t]||{})[l];
+          td.textContent = (typeof v==='number') ? formatRateForDisplay(v) : '—';
+          row.appendChild(td);
+        });
+        tbody.appendChild(row);
+      });
+      tbl.appendChild(tbody);
+      container.innerHTML=''; container.appendChild(tbl);
+    }
+
+    function formatRateForDisplay(v){
+      return (rateScale==='percent') ? `${v.toFixed(2)}%` : `${(v*100).toFixed(2)}%`;
+    }
+
+    function getRateAsDecimal(v){ return (rateScale==='percent') ? (v/100) : v; }
+
+    function clearResults(){ el('result').classList.add('hidden'); if(highlightedCell){ highlightedCell.classList.remove('active'); highlightedCell=null; } }
+
+    function calculate(){
+      if(!ratesData){ alert('Please upload a rate guide and apply bands first.'); return; }
+      const amountRaw = (el('amount').dataset.raw || el('amount').value || '').replace(/[^\d]/g,'');
+      if(!amountRaw){ alert('Enter amount.'); return; }
+      const principal = Number(amountRaw);
+      const tenor = parseInt(el('tenor').value,10);
+      const dayCount = parseInt(el('dayCount').value,10);
+      const whtPct = Number(el('whtPct').value||0)/100;
+      const band = findBand(principal); if(!band){ alert('No band matches this amount. Please adjust bands.'); return; }
+      const rawRate = (ratesData[tenor]||{})[band.label]; if(typeof rawRate!== 'number'){ alert('No rate found for this tenor/tier.'); return; }
+      const rate = getRateAsDecimal(rawRate);
+
+      const interest = principal * rate * (tenor/dayCount);
+      const wht = interest * whtPct;
+      const netInterest = interest - wht;
+      const netTotal = principal + netInterest;
+
+      const nf = new Intl.NumberFormat(el('locale').value, {style:'currency', currency: currencyFromSymbol(el('currencySymbol').value), currencyDisplay:'narrowSymbol', maximumFractionDigits:2});
+      const pct = new Intl.NumberFormat(el('locale').value, { style: 'percent', maximumFractionDigits: 2 });
+
+      el('out-tier').textContent = `${band.label} (${formatRange(band)})`;
+      el('out-rate').textContent = pct.format(rate);
+      el('out-tenor').textContent = `${tenor} days`;
+      el('out-principal').textContent = nf.format(principal);
+      el('out-interest').textContent = nf.format(interest);
+      el('out-wht').textContent = nf.format(wht);
+      el('out-net-interest').textContent = nf.format(netInterest);
+      el('out-net-total').textContent = nf.format(netTotal);
+      el('result').classList.remove('hidden');
+
+      highlightRateCell(tenor, band.label);
+    }
+
+    function currencyFromSymbol(sym){ const s=(sym||'').trim(); if(s==='₦') return 'NGN'; if(s==='$') return 'USD'; if(s==='£') return 'GBP'; if(s==='€') return 'EUR'; if(s==='₵') return 'GHS'; return 'NGN'; }
+
+    function formatRange(b){ const nf = new Intl.NumberFormat(el('locale').value); if(b.max==null) return `${el('currencySymbol').value}${nf.format(b.min)} and above`; return `${el('currencySymbol').value}${nf.format(b.min)} – ${el('currencySymbol').value}${nf.format(b.max)}`; }
+
+    function highlightRateCell(tenor, label){ if(highlightedCell){ highlightedCell.classList.remove('active'); highlightedCell=null; } const tbl = document.querySelector('#rate-table table'); if(!tbl) return; const rows = Array.from(tbl.querySelectorAll('tbody tr')); const row = rows.find(r => r.firstChild && r.firstChild.textContent.trim() === String(tenor)); if(!row) return; const headers = Array.from(tbl.querySelectorAll('thead th')); const colIndex = headers.findIndex(h => h.textContent.trim() === label); if(colIndex < 0) return; const cell = row.children[colIndex]; if(cell){ cell.classList.add('active'); highlightedCell = cell; }
+    }
+
+    function findBand(amount){ for(const b of bands){ if(b.max==null){ if(amount>=Number(b.min)) return b; } else if(amount>=Number(b.min) && amount<=Number(b.max)) return b; } return null; }
+
+    // Input formatting & clear-on-change
+    el('amount').addEventListener('input', ()=>{ const raw = el('amount').value.replace(/[^\d]/g,''); el('amount').dataset.raw = raw; el('amount').value = raw ? Number(raw).toLocaleString(el('locale').value) : ''; clearResults(); });
+    el('tenor').addEventListener('change', clearResults);
+
+    function resetForm(){ el('amount').value=''; el('amount').dataset.raw=''; if(el('tenor').options.length>0) el('tenor').selectedIndex=0; clearResults(); }
+
+    // Bands inference helpers
+    function buildDefaultBandsFromLabels(labels){ const items = labels.map(l=>({label:l, min:null, max:null, raw:l})); items.forEach(it=>{ const s = it.label.toLowerCase().replace(/\s+/g,''); const num = extractMagnitude(s); if(/above/.test(s) || />=?/.test(s)){ it.min = num; it.max = null; } if(/<=/.test(s)){ it.max = num; if(it.min==null) it.min = 0; } }); const mins = items.filter(i=>i.min!=null).sort((a,b)=>a.min-b.min); for(let i=0;i<mins.length-1;i++){ if(mins[i].max==null) mins[i].max = mins[i+1].min-1; } return items.map(({label,min,max})=>({label,min,max})); }
+    function extractMagnitude(s){ const m = s.match(/([\d,.]+)\s*(mm|m|bn|b)?/i); if(!m) return 0; let n = parseFloat(m[1].replace(/,/g,'')); const unit = (m[2]||'').toLowerCase(); if(unit==='mm' || unit==='m'){ n = n*1_000_000; } else if(unit==='bn' || unit==='b'){ n = n*1_000_000_000; } return Math.round(n); }
+
+    // CSV parser
+    function parseCSV(text){ const rows=[]; let i=0, field='', row=[], inQ=false; while(i<text.length){ const c=text[i]; if(inQ){ if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else { inQ=false; } } else { field+=c; } } else { if(c==='"'){ inQ=true; } else if(c===','){ row.push(field); field=''; } else if(c==='\n' || c==='\r'){ if(c==='\r' && text[i+1]==='\n') i++; row.push(field); rows.push(row); field=''; row=[]; } else { field+=c; } } i++; } if(field.length>0 || row.length>0){ row.push(field); rows.push(row); } return rows; }
+
+    
+
+    function resetAll(){
+      try{
+        // Clear file input
+        const fileEl = document.getElementById('file'); if(fileEl) fileEl.value = "";
+
+        // Clear storage
+        try{ sessionStorage.removeItem('ratesData'); }catch(e){}
+        try{ localStorage.removeItem('mm_calc_cfg'); }catch(e){}
+
+        // Reset state (use same globals as page)
+        if (typeof ratesData !== 'undefined') ratesData = null;
+        if (typeof tierLabels !== 'undefined') tierLabels = [];
+        if (typeof tenors !== 'undefined') tenors = [];
+        if (typeof bands !== 'undefined') bands = [];
+        if (typeof rateScale !== 'undefined') rateScale = 'decimal';
+        if (typeof highlightedCell !== 'undefined' && highlightedCell){ highlightedCell.classList.remove('active'); highlightedCell = null; }
+
+        // Hide sections and clear results
+        const afterLoad = document.getElementById('afterLoad'); if(afterLoad) afterLoad.classList.add('hidden');
+        const calcCard  = document.getElementById('calc-card'); if(calcCard)  calcCard.classList.add('hidden');
+        if (typeof clearResults === 'function') clearResults();
+
+        // Clear UI containers
+        ['detTenors','detTiers','preview','rate-table','bandBuilder'].forEach(id => {
+          const n = document.getElementById(id); if(n) n.innerHTML = '';
+        });
+
+        // Clear inputs & disable Calculate
+        const amountEl = document.getElementById('amount'); if(amountEl){ amountEl.value=''; amountEl.dataset.raw=''; }
+        const tenorSel = document.getElementById('tenor');  if(tenorSel){ tenorSel.innerHTML=''; }
+        const btnCalc  = document.getElementById('btnCalc'); if(btnCalc) btnCalc.disabled = true;
+
+        if (typeof hideError === 'function') hideError();
+        alert('Page has been reset.');
+      }catch(err){ console.error(err); alert('Reset failed: '+ err.message); }
+    }
+
+// Config export/import/local storage
+    function exportConfig(){ if(!ratesData){ alert('Load a rate guide first.'); return; } const cfg = { rates:ratesData, tiers:tierLabels, tenors:tenors, bands:bands, preview:null }; const blob = new Blob([JSON.stringify(cfg,null,2)], {type:'application/json'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='rate-config.json'; a.click(); URL.revokeObjectURL(a.href); }
+    function saveLocal(){ if(!ratesData){ alert('Nothing to save yet.'); return; } localStorage.setItem('mm_calc_cfg', JSON.stringify({rates:ratesData, tiers:tierLabels, tenors:tenors, bands:bands})); alert('Saved locally.'); }
+    function loadLocal(){ const s = localStorage.getItem('mm_calc_cfg'); if(!s){ alert('No local config saved.'); return; } try{ const obj=JSON.parse(s); ratesData=obj.rates; tierLabels=obj.tiers; tenors=obj.tenors; bands=obj.bands||buildDefaultBandsFromLabels(tierLabels); detectRateScale(); onDataReady(null); }catch(e){ alert('Failed to load local config.'); } }
+    function clearLocal(){ localStorage.removeItem('mm_calc_cfg'); alert('Local storage cleared.'); }
+
+    // Expose functions for inline handlers
+    window.loadRateGuide = loadRateGuide;
+    window.inferBands    = inferBands;
+    window.applyBands    = applyBands;
+    window.calculate     = calculate;
+    window.resetForm     = resetForm;
+    window.loadXLSX      = loadXLSX;
+    window.exportConfig  = exportConfig;
+    window.saveLocal     = saveLocal;
+    window.loadLocal     = loadLocal;
+    window.clearLocal    = clearLocal;
+    window.resetAll      = resetAll;
+
+    // Utility
+    function escapeHtml(x){ return String(x).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
+    function escapeAttr(x){ return escapeHtml(x).replace(/"/g,'&quot;'); }
+  </script>
+</body>
+</html>
